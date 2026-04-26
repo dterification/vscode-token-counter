@@ -1,0 +1,117 @@
+{
+  "name": "vscode-token-counter",
+  "displayName": "Token Counter",
+  "description": "Counts LLM tokens for the active file or a selected directory. Displays the count in the status bar, updated on file focus.",
+  "version": "0.1.0",
+  "publisher": "dterification",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tokenCounter.countActiveFile",
+        "title": "Token Counter: Count Active File"
+      },
+      {
+        "command": "tokenCounter.countUri",
+        "title": "Token Counter: Count File or Folder"
+      },
+      {
+        "command": "tokenCounter.recountLastTarget",
+        "title": "Token Counter: Recount Last Target"
+      }
+    ],
+    "configuration": {
+      "title": "Token Counter",
+      "properties": {
+        "tokenCounter.countOnFocus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically count tokens when the active editor changes. If the count is too slow for your workflow, disable this and trigger counts manually."
+        },
+        "tokenCounter.model": {
+          "type": "string",
+          "enum": ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
+          "enumDescriptions": [
+            "GPT-4o — displayed in tooltip",
+            "GPT-4 — displayed in tooltip",
+            "GPT-3.5 Turbo — displayed in tooltip"
+          ],
+          "default": "gpt-4o",
+          "description": "Model label shown in the status bar tooltip. The underlying tokenizer uses cl100k_base encoding (accurate for GPT-4 / GPT-3.5, approximate for GPT-4o)."
+        },
+        "tokenCounter.maxFileSizeKB": {
+          "type": "number",
+          "default": 512,
+          "minimum": 0,
+          "description": "Skip files larger than this size (KB) to protect performance. Set to 0 to disable the limit."
+        },
+        "tokenCounter.includeExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "If non-empty, only count files with these extensions (e.g. [\".ts\", \".md\"]). Empty means all extensions are allowed."
+        },
+        "tokenCounter.excludeExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg",
+            ".pdf", ".zip", ".tar", ".gz", ".rar", ".7z",
+            ".exe", ".dll", ".so", ".dylib", ".bin",
+            ".woff", ".woff2", ".ttf", ".eot",
+            ".mp3", ".mp4", ".wav", ".ogg", ".avi", ".mov", ".mkv"
+          ],
+          "description": "File extensions to always skip regardless of other settings."
+        },
+        "tokenCounter.excludeGlobs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            "**/.git/**",
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/out/**",
+            "**/coverage/**",
+            "**/.next/**",
+            "**/__pycache__/**",
+            "**/.venv/**",
+            "**/vendor/**"
+          ],
+          "description": "Glob patterns to exclude when counting directories. Matched against workspace-relative paths."
+        }
+      }
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "tokenCounter.countUri",
+          "when": "resourceScheme == file",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -p ./ --watch",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/minimatch": "^5.1.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^2.8.0",
+    "minimatch": "^9.0.0"
+  }
+}
