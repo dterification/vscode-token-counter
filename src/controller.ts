@@ -6,8 +6,8 @@ import { countTarget } from './counter';
 export class TokenCounterController implements vscode.Disposable {
   private readonly statusBar: vscode.StatusBarItem;
   private lastTarget: CountTarget | undefined;
-  private counting = false;
   private debounceTimer: NodeJS.Timeout | undefined;
+  private currentCts: vscode.CancellationTokenSource | undefined;
 
   constructor() {
     this.statusBar = vscode.window.createStatusBarItem(
@@ -70,10 +70,14 @@ export class TokenCounterController implements vscode.Disposable {
   }
 
   private async runCount(target: CountTarget): Promise<void> {
-    if (this.counting) {
-      return;
+    // Cancel any in-progress count before starting a new one
+    if (this.currentCts) {
+      this.currentCts.cancel();
+      this.currentCts.dispose();
     }
-    this.counting = true;
+    this.currentCts = new vscode.CancellationTokenSource();
+    const token = this.currentCts.token;
+
     this.lastTarget = target;
     this.setStatusCounting();
 
@@ -82,13 +86,20 @@ export class TokenCounterController implements vscode.Disposable {
       const model = config.get<string>('model', 'gpt-4o');
       const maxFileSizeKB = config.get<number>('maxFileSizeKB', 512);
       const tokenizer = createTokenizer(model);
-      const result = await countTarget(target, tokenizer, maxFileSizeKB);
-      this.setStatusResult(result, tokenizer.modelLabel);
+      const result = await countTarget(target, tokenizer, maxFileSizeKB, token);
+      if (!token.isCancellationRequested) {
+        this.setStatusResult(result, tokenizer.modelLabel);
+      }
     } catch (err) {
-      this.setStatusError();
-      vscode.window.showErrorMessage(`Token Counter: ${String(err)}`);
+      if (!token.isCancellationRequested) {
+        this.setStatusError();
+        vscode.window.showErrorMessage(`Token Counter: ${String(err)}`);
+      }
     } finally {
-      this.counting = false;
+      if (this.currentCts?.token === token) {
+        this.currentCts.dispose();
+        this.currentCts = undefined;
+      }
     }
   }
 
@@ -118,6 +129,10 @@ export class TokenCounterController implements vscode.Disposable {
   dispose(): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+    }
+    if (this.currentCts) {
+      this.currentCts.cancel();
+      this.currentCts.dispose();
     }
     this.statusBar.dispose();
   }

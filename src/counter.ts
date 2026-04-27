@@ -6,19 +6,25 @@ import { shouldInclude, shouldTraverseDirectory } from './filters';
 export async function countTarget(
   target: CountTarget,
   tokenizer: Tokenizer,
-  maxFileSizeKB: number
+  maxFileSizeKB: number,
+  token: vscode.CancellationToken
 ): Promise<CountResult> {
   if (target.kind === 'file') {
-    return countFile(target.uri, tokenizer, maxFileSizeKB);
+    return countFile(target.uri, tokenizer, maxFileSizeKB, token);
   }
-  return countDirectory(target.uri, tokenizer, maxFileSizeKB);
+  return countDirectory(target.uri, tokenizer, maxFileSizeKB, token);
 }
 
 async function countFile(
   uri: vscode.Uri,
   tokenizer: Tokenizer,
-  maxFileSizeKB: number
+  maxFileSizeKB: number,
+  token: vscode.CancellationToken
 ): Promise<CountResult> {
+  if (token.isCancellationRequested) {
+    return { totalTokens: 0, filesCounted: 0, filesSkipped: 0 };
+  }
+
   if (!shouldInclude(uri)) {
     return { totalTokens: 0, filesCounted: 0, filesSkipped: 1 };
   }
@@ -43,9 +49,14 @@ async function countFile(
 
 async function collectFiles(
   uri: vscode.Uri,
-  excludeGlobs: string[]
+  excludeGlobs: string[],
+  token: vscode.CancellationToken
 ): Promise<vscode.Uri[]> {
   const files: vscode.Uri[] = [];
+
+  if (token.isCancellationRequested) {
+    return files;
+  }
 
   let entries: [string, vscode.FileType][];
   try {
@@ -55,6 +66,10 @@ async function collectFiles(
   }
 
   for (const [name, fileType] of entries) {
+    if (token.isCancellationRequested) {
+      break;
+    }
+
     const childUri = vscode.Uri.joinPath(uri, name);
     const isFile = (fileType & vscode.FileType.File) === vscode.FileType.File;
     const isDir =
@@ -69,7 +84,7 @@ async function collectFiles(
     if (isFile) {
       files.push(childUri);
     } else if (isDir && shouldTraverseDirectory(childUri, excludeGlobs)) {
-      const children = await collectFiles(childUri, excludeGlobs);
+      const children = await collectFiles(childUri, excludeGlobs, token);
       files.push(...children);
     }
   }
@@ -80,19 +95,23 @@ async function collectFiles(
 async function countDirectory(
   uri: vscode.Uri,
   tokenizer: Tokenizer,
-  maxFileSizeKB: number
+  maxFileSizeKB: number,
+  token: vscode.CancellationToken
 ): Promise<CountResult> {
   const config = vscode.workspace.getConfiguration('tokenCounter');
   const excludeGlobs = config.get<string[]>('excludeGlobs', []);
 
-  const files = await collectFiles(uri, excludeGlobs);
+  const files = await collectFiles(uri, excludeGlobs, token);
 
   let totalTokens = 0;
   let filesCounted = 0;
   let filesSkipped = 0;
 
   for (const file of files) {
-    const result = await countFile(file, tokenizer, maxFileSizeKB);
+    if (token.isCancellationRequested) {
+      break;
+    }
+    const result = await countFile(file, tokenizer, maxFileSizeKB, token);
     totalTokens += result.totalTokens;
     filesCounted += result.filesCounted;
     filesSkipped += result.filesSkipped;
